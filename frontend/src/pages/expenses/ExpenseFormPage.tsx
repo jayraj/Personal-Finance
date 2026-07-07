@@ -1,97 +1,101 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getCategories } from "../../api/categories";
-import {
-  createExpense,
-  updateExpense,
-  getExpense,
-  uploadReceipt,
-} from "../../api/expenses";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useCategories } from "../../hooks/useCategories";
+import { useExpense, useCreateExpense, useUpdateExpense } from "../../hooks/useExpenses";
+import { useUploadReceipt } from "../../hooks/useReceipts";
+import { expenseFormSchema, validateReceiptFile, type ExpenseFormValues } from "../../utils/validation";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
-import type { Category } from "../../types";
 
 export default function ExpenseFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryId, setCategoryId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(isEdit);
-  const [saving, setSaving] = useState(false);
+  const { data: categories = [], isLoading: catLoading } = useCategories();
+  const { data: expense, isLoading: expLoading } = useExpense(id || "");
+  const createMutation = useCreateExpense();
+  const updateMutation = useUpdateExpense();
+  const uploadMutation = useUploadReceipt();
   const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
+  const [receiptError, setReceiptError] = useState("");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseFormSchema),
+    defaultValues: {
+      category_id: "",
+      amount: "",
+      date: new Date().toISOString().split("T")[0],
+      notes: "",
+    },
+  });
 
   useEffect(() => {
-    getCategories()
-      .then((cats) => {
-        setCategories(cats);
-        if (cats.length > 0 && !categoryId) {
-          setCategoryId(cats[0].id);
-        }
-      })
-      .catch(() => setError("Failed to load categories"));
-
-    if (isEdit && id) {
-      getExpense(id)
-        .then((exp) => {
-          setCategoryId(exp.categoryId);
-          setAmount(String(exp.amount));
-          setDate(exp.date);
-          setNotes(exp.notes || "");
-        })
-        .catch(() => setError("Failed to load expense"))
-        .finally(() => setLoading(false));
+    if (isEdit && expense && categories.length > 0) {
+      reset({
+        category_id: expense.categoryId,
+        amount: String(expense.amount),
+        date: expense.date,
+        notes: expense.notes || "",
+      });
+    } else if (!isEdit && categories.length > 0) {
+      reset((prev) => ({ ...prev, category_id: categories[0]?.id || "" }));
     }
-  }, [id, isEdit]);
+  }, [expense, categories, isEdit, reset]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    const parsedAmount = parseFloat(amount);
-    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-      setError("Amount must be a positive number");
-      return;
-    }
-    if (!categoryId) {
-      setError("Please select a category");
-      return;
-    }
-
-    setSaving(true);
+  const onSubmit = async (values: ExpenseFormValues) => {
     try {
       if (isEdit && id) {
-        await updateExpense(id, {
-          category_id: categoryId,
-          amount: parsedAmount,
-          date,
-          notes: notes || null,
+        await updateMutation.mutateAsync({
+          id,
+          body: {
+            category_id: values.category_id,
+            amount: parseFloat(values.amount),
+            date: values.date || undefined,
+            notes: values.notes || null,
+          },
         });
       } else {
-        const expense = await createExpense({
-          category_id: categoryId,
-          amount: parsedAmount,
-          date,
-          notes: notes || null,
+        const newExpense = await createMutation.mutateAsync({
+          category_id: values.category_id,
+          amount: parseFloat(values.amount),
+          date: values.date || undefined,
+          notes: values.notes || null,
         });
 
         for (const file of receiptFiles) {
-          await uploadReceipt(expense.id, file);
+          await uploadMutation.mutateAsync({ expenseId: newExpense.id, file });
         }
       }
       navigate("/expenses");
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to save expense");
-    } finally {
-      setSaving(false);
+    } catch {
+      // Error handled by mutation state
     }
   };
 
-  if (loading) return <LoadingSpinner />;
+  const handleReceiptChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setReceiptError("");
+    for (const file of files) {
+      const error = validateReceiptFile(file);
+      if (error) {
+        setReceiptError(error);
+        return;
+      }
+    }
+    setReceiptFiles((prev) => [...prev, ...files]);
+  };
+
+  const isLoading = (isEdit && expLoading) || catLoading;
+  const isSaving = isSubmitting || createMutation.isPending || updateMutation.isPending || uploadMutation.isPending;
+
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -99,7 +103,7 @@ export default function ExpenseFormPage() {
         {isEdit ? "Edit Expense" : "Add Expense"}
       </h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg bg-white p-6 shadow-sm">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 rounded-lg bg-white p-6 shadow-sm">
         <div>
           <label htmlFor="amount" className="block text-sm font-medium text-gray-700">
             Amount *
@@ -109,12 +113,13 @@ export default function ExpenseFormPage() {
             type="number"
             step="0.01"
             min="0.01"
-            required
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            {...register("amount")}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             placeholder="0.00"
           />
+          {errors.amount && (
+            <p className="mt-1 text-sm text-red-600">{errors.amount.message}</p>
+          )}
         </div>
 
         <div>
@@ -123,9 +128,7 @@ export default function ExpenseFormPage() {
           </label>
           <select
             id="category"
-            required
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
+            {...register("category_id")}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             <option value="">Select a category</option>
@@ -135,6 +138,9 @@ export default function ExpenseFormPage() {
               </option>
             ))}
           </select>
+          {errors.category_id && (
+            <p className="mt-1 text-sm text-red-600">{errors.category_id.message}</p>
+          )}
         </div>
 
         <div>
@@ -144,8 +150,7 @@ export default function ExpenseFormPage() {
           <input
             id="date"
             type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            {...register("date")}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
@@ -157,8 +162,7 @@ export default function ExpenseFormPage() {
           <textarea
             id="notes"
             rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            {...register("notes")}
             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             placeholder="Optional notes..."
           />
@@ -173,24 +177,30 @@ export default function ExpenseFormPage() {
               type="file"
               multiple
               accept="image/jpeg,image/png,application/pdf"
-              onChange={(e) => setReceiptFiles(Array.from(e.target.files || []))}
+              onChange={handleReceiptChange}
               className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-indigo-600 hover:file:bg-indigo-100"
             />
+            {receiptError && <p className="mt-1 text-sm text-red-600">{receiptError}</p>}
+            {receiptFiles.length > 0 && (
+              <p className="mt-1 text-xs text-gray-500">{receiptFiles.length} file(s) selected</p>
+            )}
             <p className="mt-1 text-xs text-gray-400">
               JPG, PNG, or PDF. Max 5MB each.
             </p>
           </div>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {(errors.root || createMutation.isError || updateMutation.isError) && (
+          <p className="text-sm text-red-600">Failed to save expense</p>
+        )}
 
         <div className="flex gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={isSaving}
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? "Saving..." : isEdit ? "Save Changes" : "Add Expense"}
+            {isSaving ? "Saving..." : isEdit ? "Save Changes" : "Add Expense"}
           </button>
           <button
             type="button"

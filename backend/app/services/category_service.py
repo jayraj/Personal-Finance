@@ -16,7 +16,7 @@ PREDEFINED_CATEGORIES = [
 
 async def seed_predefined_categories(db: AsyncSession, user_id: uuid.UUID) -> list[Category]:
     result = await db.execute(
-        select(Category).where(Category.user_id == user_id, Category.is_predefined == True)
+        select(Category).where(Category.user_id == user_id, Category.is_predefined)
     )
     existing = {c.name for c in result.scalars().all()}
 

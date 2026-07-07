@@ -1,7 +1,7 @@
 # PFIN-8 — View all expenses in a sortable, filterable list
 
 - **Epic:** [PFIN-1 — Expense Tracking](./_epic-PFIN-1.md)
-- **Status:** To Do
+- **Status:** Done ✅
 - **Priority:** Medium
 
 ## Description

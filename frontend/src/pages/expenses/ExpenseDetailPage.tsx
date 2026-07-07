@@ -1,58 +1,34 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  getExpense,
-  deleteExpense,
-  deleteReceipt,
-} from "../../api/expenses";
+import { useExpense, useDeleteExpense } from "../../hooks/useExpenses";
+import { useDeleteReceipt } from "../../hooks/useReceipts";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
-import type { Expense } from "../../types";
 
 export default function ExpenseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [expense, setExpense] = useState<Expense | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data: expense, isLoading, error } = useExpense(id || "");
+  const deleteExpenseMutation = useDeleteExpense();
+  const deleteReceiptMutation = useDeleteReceipt();
   const [showDelete, setShowDelete] = useState(false);
   const [showFullImage, setShowFullImage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    getExpense(id)
-      .then(setExpense)
-      .catch(() => setError("Failed to load expense"))
-      .finally(() => setLoading(false));
-  }, [id]);
-
   const handleDelete = async () => {
     if (!id) return;
-    try {
-      await deleteExpense(id);
-      navigate("/expenses", { replace: true });
-    } catch {
-      setError("Failed to delete expense");
-    }
+    deleteExpenseMutation.mutate(id, {
+      onSuccess: () => navigate("/expenses", { replace: true }),
+    });
     setShowDelete(false);
   };
 
-  const handleRemoveReceipt = async (receiptId: string) => {
+  const handleRemoveReceipt = (receiptId: string) => {
     if (!id) return;
-    try {
-      await deleteReceipt(id, receiptId);
-      setExpense((prev) =>
-        prev
-          ? { ...prev, receipts: prev.receipts?.filter((r) => r.id !== receiptId) }
-          : prev,
-      );
-    } catch {
-      setError("Failed to delete receipt");
-    }
+    deleteReceiptMutation.mutate({ expenseId: id, receiptId });
   };
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
+  if (isLoading) return <LoadingSpinner />;
+  if (error) return <p className="text-sm text-red-600">Failed to load expense</p>;
   if (!expense) return <p className="text-sm text-gray-500">Expense not found</p>;
 
   return (

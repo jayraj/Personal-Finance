@@ -37,6 +37,7 @@ export interface Receipt {
   fileName: string;
   mimeType: string;
   fileSize: number;
+  url?: string | null;
   createdAt: string;
 }
 

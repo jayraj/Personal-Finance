@@ -1,14 +1,13 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import Select, func, select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.models.category import Category
 from app.models.expense import Expense
-from app.models.receipt import Receipt
 from app.schemas.expense import (
     ExpenseCreate,
     ExpenseResponse,
@@ -18,6 +17,36 @@ from app.schemas.expense import (
 )
 
 PAGE_SIZE = 20
+
+VALID_SORT_FIELDS = {"date", "amount", "created_at", "updated_at"}
+
+SORT_COLUMN_MAP = {
+    "date": Expense.date,
+    "amount": Expense.amount,
+    "created_at": Expense.created_at,
+    "updated_at": Expense.updated_at,
+}
+
+
+def _decode_cursor(raw: str | None) -> tuple | None:
+    if not raw:
+        return None
+    try:
+        parts = raw.split("_")
+        if len(parts) < 2:
+            return None
+        sort_val = parts[0]
+        record_id = parts[-1]
+        inner = "_".join(parts[1:-1]) if len(parts) > 2 else None
+        if inner is not None:
+            return (sort_val, inner, record_id)
+        return (sort_val, record_id)
+    except (ValueError, IndexError):
+        return None
+
+
+def _encode_cursor(sort_val, record_id) -> str:
+    return f"{sort_val}_{record_id}"
 
 
 async def create_expense(
@@ -73,10 +102,32 @@ async def get_expenses(
         query = query.where(Expense.amount >= amount_min)
     if amount_max is not None:
         query = query.where(Expense.amount <= amount_max)
-    if cursor:
-        query = query.where(Expense.id < cursor)
 
-    sort_column = getattr(Expense, sort_by, Expense.date)
+    if sort_by not in VALID_SORT_FIELDS:
+        sort_by = "date"
+    sort_column = SORT_COLUMN_MAP[sort_by]
+
+    if cursor:
+        decoded = _decode_cursor(cursor)
+        if decoded:
+            sort_val_str = decoded[0]
+            record_id = decoded[-1]
+            if sort_by == "date":
+                sort_val_cast = date.fromisoformat(sort_val_str)
+            elif sort_by in ("created_at", "updated_at"):
+                sort_val_cast = datetime.fromtimestamp(float(sort_val_str), tz=timezone.utc)
+            else:
+                sort_val_cast = float(sort_val_str)
+
+            if sort_order == "desc":
+                query = query.where(
+                    tuple_(sort_column, Expense.id) < tuple_(sort_val_cast, record_id)
+                )
+            else:
+                query = query.where(
+                    tuple_(sort_column, Expense.id) > tuple_(sort_val_cast, record_id)
+                )
+
     order_fn = sort_column.desc if sort_order == "desc" else sort_column.asc
     query = query.order_by(order_fn(), Expense.id.desc())
 
@@ -95,9 +146,21 @@ async def get_expenses(
         resp.receipts = [ReceiptResponse.model_validate(r) for r in exp.receipts]
         expense_responses.append(resp)
 
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        sort_value = getattr(last, sort_by)
+        if sort_by == "date":
+            sort_str = sort_value.isoformat()
+        elif sort_by in ("created_at", "updated_at"):
+            sort_str = str(sort_value.timestamp())
+        else:
+            sort_str = str(sort_value)
+        next_cursor = _encode_cursor(sort_str, str(last.id))
+
     return PaginatedExpenseResponse(
         items=expense_responses,
-        next_cursor=str(items[-1].id) if has_more and items else None,
+        next_cursor=next_cursor,
     )
 
 

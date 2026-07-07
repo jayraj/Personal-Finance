@@ -1,7 +1,7 @@
 # PFIN-6 — Add expense with amount, category, date, and notes
 
 - **Epic:** [PFIN-1 — Expense Tracking](./_epic-PFIN-1.md)
-- **Status:** To Do
+- **Status:** Done ✅
 - **Priority:** Medium
 
 ## Description

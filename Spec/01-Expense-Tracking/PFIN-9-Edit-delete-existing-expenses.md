@@ -1,7 +1,7 @@
 # PFIN-9 — Edit and delete existing expense entries
 
 - **Epic:** [PFIN-1 — Expense Tracking](./_epic-PFIN-1.md)
-- **Status:** To Do
+- **Status:** Done ✅
 - **Priority:** Medium
 
 ## Description

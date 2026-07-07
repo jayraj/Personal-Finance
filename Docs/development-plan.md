@@ -28,17 +28,19 @@ Five-phase build of a personal finance tracking app with expense tracking, budge
 
 ---
 
-## Phase 2: Expense Tracking (Epic 1)
+## Phase 2: Expense Tracking (Epic 1) ✅ Done
 
 **Stories:** PFIN-7 → PFIN-6 → PFIN-8 → PFIN-9 → PFIN-10
 
 | Task | Backend | Frontend |
 |------|---------|----------|
-| PFIN-7 | Category CRUD; seed 10 predefined categories | Category dropdown with inline creation; Category management page |
-| PFIN-6 | `POST /api/expenses` | Add Expense form (amount, category, date, notes) with Zod validation |
-| PFIN-8 | `GET /api/expenses` — cursor-based pagination, filterable (category, date range, amount), sortable | Expense list with infinite scroll; sort/filter controls; expense detail view |
-| PFIN-9 | `PUT /api/expenses/:id`, `DELETE /api/expenses/:id` | Edit form (pre-filled); Delete with confirmation dialog |
-| PFIN-10 | `POST /api/expenses/:id/receipts`, `DELETE /api/expenses/:id/receipts/:receiptId`; upload to MinIO, return signed URL | Attach receipt button (camera/gallery); thumbnail preview; full-screen viewer |
+| PFIN-7 | Category CRUD; seed 10 predefined categories | Category management page with TanStack Query; inline CRUD |
+| PFIN-6 | `POST /api/expenses`; Zod validation (positive amount, category required) | Add Expense form with react-hook-form + Zod validation (error messages: "Amount is required", "Amount must be a number", "Amount must be positive") |
+| PFIN-8 | `GET /api/expenses` — fixed composite cursor pagination for all sort orders, filterable (category, date range, amount), sortable | Expense list with `useInfiniteQuery` + IntersectionObserver for infinite scroll; sort/filter controls; expense detail view |
+| PFIN-9 | `PUT /api/expenses/:id`, `DELETE /api/expenses/:id` | Edit form (pre-filled with react-hook-form `reset`); Delete with ConfirmDialog |
+| PFIN-10 | `POST /api/expenses/:id/receipts`, `DELETE /api/expenses/:id/receipts/:receiptId`; upload to MinIO, return signed URL; file type (JPG/PNG/PDF) + size (5MB) validation | Attach receipt with client-side validation; thumbnail preview; full-screen viewer |
+
+**Refinements:** Custom hooks (`useExpenses`, `useCategories`, `useReceipts`) with TanStack Query; all forms use react-hook-form + Zod v4; receipt client-side validation; receipt `url` field typed; backend integration tests (CRUD, pagination, filters, sorting, auth isolation); frontend unit tests (validation, hooks).
 
 ---
 

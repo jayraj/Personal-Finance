@@ -1,7 +1,7 @@
 # PFIN-10 — Attach receipt images to expense entries
 
 - **Epic:** [PFIN-1 — Expense Tracking](./_epic-PFIN-1.md)
-- **Status:** To Do
+- **Status:** Done ✅
 - **Priority:** Medium
 
 ## Description

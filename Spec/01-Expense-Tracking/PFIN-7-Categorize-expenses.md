@@ -1,7 +1,7 @@
 # PFIN-7 — Categorize expenses with predefined and custom categories
 
 - **Epic:** [PFIN-1 — Expense Tracking](./_epic-PFIN-1.md)
-- **Status:** To Do
+- **Status:** Done ✅
 - **Priority:** Medium
 
 ## Description

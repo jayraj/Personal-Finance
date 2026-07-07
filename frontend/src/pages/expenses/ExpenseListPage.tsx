@@ -1,74 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  getExpenses,
-  deleteExpense,
-  type ExpensesQuery,
-} from "../../api/expenses";
-import { getCategories } from "../../api/categories";
+import { useExpenses, useDeleteExpense } from "../../hooks/useExpenses";
+import { useCategories } from "../../hooks/useCategories";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
-import type { Expense, Category } from "../../types";
+import type { ExpensesQuery } from "../../api/expenses";
 
 export default function ExpenseListPage() {
   const navigate = useNavigate();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const [cursor, setCursor] = useState<string | null | undefined>(undefined);
-  const [hasMore, setHasMore] = useState(true);
   const [filters, setFilters] = useState<ExpensesQuery>({
     sort_by: "date",
     sort_order: "desc",
   });
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, error: queryError } = useExpenses(filters);
+  const { data: categories = [] } = useCategories();
+  const deleteMutation = useDeleteExpense();
+
+  const expenses = data?.pages.flatMap((p) => p.items) ?? [];
   const loadMoreRef = useRef<HTMLDivElement>(null);
-
-  const fetchExpenses = useCallback(
-    async (newFilters: ExpensesQuery, cursorVal?: string | null) => {
-      try {
-        const data = await getExpenses({ ...newFilters, cursor: cursorVal || undefined });
-        if (cursorVal) {
-          setExpenses((prev) => [...prev, ...data.items]);
-        } else {
-          setExpenses(data.items);
-        }
-        setCursor(data.next_cursor);
-        setHasMore(!!data.next_cursor);
-      } catch {
-        setError("Failed to load expenses");
-      }
-    },
-    [],
-  );
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setCursor(undefined);
-    setHasMore(true);
-    getCategories()
-      .then(setCategories)
-      .catch(() => {});
-    fetchExpenses(filters, null).finally(() => setLoading(false));
-  }, [filters, fetchExpenses]);
-
-  useEffect(() => {
-    if (!loadMoreRef.current || !hasMore || loading) return;
+    if (!loadMoreRef.current || !hasNextPage || isFetchingNextPage) return;
     observerRef.current = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          setLoadingMore(true);
-          fetchExpenses(filters, cursor).finally(() => setLoadingMore(false));
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
         }
       },
       { threshold: 0.1 },
     );
     observerRef.current.observe(loadMoreRef.current);
     return () => observerRef.current?.disconnect();
-  }, [hasMore, loadingMore, cursor, filters, fetchExpenses, loading]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleSort = (field: string) => {
     setFilters((prev) => ({
@@ -81,12 +47,9 @@ export default function ExpenseListPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    try {
-      await deleteExpense(deleteId);
-      setExpenses((prev) => prev.filter((e) => e.id !== deleteId));
-    } catch {
-      setError("Failed to delete expense");
-    }
+    deleteMutation.mutate(deleteId, {
+      onError: () => {},
+    });
     setDeleteId(null);
   };
 
@@ -95,7 +58,7 @@ export default function ExpenseListPage() {
     return filters.sort_order === "asc" ? " \u2191" : " \u2193";
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">
@@ -189,9 +152,10 @@ export default function ExpenseListPage() {
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {queryError && <p className="text-sm text-red-600">Failed to load expenses</p>}
+      {deleteMutation.isError && <p className="text-sm text-red-600">Failed to delete expense</p>}
 
-      {expenses.length === 0 && !loading && (
+      {expenses.length === 0 && !isLoading && (
         <div className="rounded-lg bg-white p-12 text-center shadow-sm">
           <p className="text-gray-500">No expenses yet</p>
           <Link
@@ -271,7 +235,7 @@ export default function ExpenseListPage() {
       </div>
 
       <div ref={loadMoreRef} className="py-4">
-        {loadingMore && <LoadingSpinner />}
+        {isFetchingNextPage && <LoadingSpinner />}
       </div>
 
       <ConfirmDialog

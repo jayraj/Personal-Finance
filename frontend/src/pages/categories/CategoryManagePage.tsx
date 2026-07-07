@@ -1,76 +1,57 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  getCategories,
-  createCategory,
-  updateCategory,
-  deleteCategory,
-} from "../../api/categories";
+  useCategories,
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory,
+} from "../../hooks/useCategories";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import ConfirmDialog from "../../components/common/ConfirmDialog";
-import type { Category } from "../../types";
 
 export default function CategoryManagePage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data: categories = [], isLoading, error: queryError } = useCategories();
+  const createMutation = useCreateCategory();
+  const updateMutation = useUpdateCategory();
+  const deleteMutation = useDeleteCategory();
+
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data);
-    } catch {
-      setError("Failed to load categories");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchCategories();
-  }, []);
+  const [error, setError] = useState("");
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
     setError("");
-    try {
-      const cat = await createCategory(newName.trim());
-      setCategories((prev) => [...prev, cat]);
-      setNewName("");
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to create category");
-    }
+    createMutation.mutate(newName.trim(), {
+      onSuccess: () => setNewName(""),
+      onError: (err: any) => setError(err.response?.data?.detail || "Failed to create category"),
+    });
   };
 
-  const handleUpdate = async (id: string) => {
+  const handleUpdate = (id: string) => {
     if (!editName.trim()) return;
     setError("");
-    try {
-      const updated = await updateCategory(id, { name: editName.trim() });
-      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      setEditingId(null);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to update category");
-    }
+    updateMutation.mutate(
+      { id, name: editName.trim() },
+      {
+        onSuccess: () => setEditingId(null),
+        onError: (err: any) => setError(err.response?.data?.detail || "Failed to update category"),
+      },
+    );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!deleteId) return;
     setError("");
-    try {
-      await deleteCategory(deleteId);
-      setCategories((prev) => prev.filter((c) => c.id !== deleteId));
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to delete category");
-    }
+    deleteMutation.mutate(deleteId, {
+      onError: (err: any) => setError(err.response?.data?.detail || "Failed to delete category"),
+    });
     setDeleteId(null);
   };
 
-  if (loading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -91,14 +72,14 @@ export default function CategoryManagePage() {
         />
         <button
           type="submit"
-          disabled={!newName.trim()}
+          disabled={!newName.trim() || createMutation.isPending}
           className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
         >
-          Add
+          {createMutation.isPending ? "Adding..." : "Add"}
         </button>
       </form>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {(error || queryError) && <p className="text-sm text-red-600">{error || "Failed to load categories"}</p>}
 
       <div className="divide-y rounded-lg bg-white shadow-sm">
         {categories.map((cat) => (
@@ -117,9 +98,10 @@ export default function CategoryManagePage() {
                 />
                 <button
                   onClick={() => handleUpdate(cat.id)}
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
+                  disabled={updateMutation.isPending}
+                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  Save
+                  {updateMutation.isPending ? "..." : "Save"}
                 </button>
                 <button
                   onClick={() => setEditingId(null)}
