@@ -1,5 +1,6 @@
 from app.services.auth_service import register, login, refresh_tokens, logout
 from app.services.profile_service import get_profile, update_profile, delete_account
+from app.services import category_service, expense_service
 
 __all__ = [
     "register",
@@ -9,4 +10,6 @@ __all__ = [
     "get_profile",
     "update_profile",
     "delete_account",
+    "category_service",
+    "expense_service",
 ]
